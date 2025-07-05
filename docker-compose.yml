@@ -1,0 +1,45 @@
+services:
+  server:
+    build:
+      context: ./server
+      dockerfile: Dockerfile
+    image: vsomeip-server
+    container_name: vsomeip_server
+    networks:
+      vsomeip_net:
+        aliases:
+          - vsomeip-server
+    ports:
+      - "30490:30490/udp"
+    volumes:
+      - ./server:/app
+      - ./server/logs:/app/logs
+    environment:
+      - VSOMEIP_LOG_LEVEL=trace
+      - LD_LIBRARY_PATH=/usr/local/lib
+
+  client:
+    build:
+      context: ./client
+      dockerfile: Dockerfile
+    image: vsomeip-client
+    container_name: vsomeip_client
+    depends_on:
+      - server
+    networks:
+      vsomeip_net:
+        aliases:
+          - vsomeip-client
+    volumes:
+      - ./client:/app
+      - ./client/logs:/app/logs
+    environment:
+      - VSOMEIP_LOG_LEVEL=trace
+      - LD_LIBRARY_PATH=/usr/local/lib
+
+networks:
+  vsomeip_net:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 192.168.144.0/20

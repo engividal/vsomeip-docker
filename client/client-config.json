@@ -1,0 +1,20 @@
+{
+  "unicast": "192.168.144.3",
+  "netmask": "255.255.240.0",
+  "logging": {
+    "level": "trace",
+    "console": "true",
+    "file": { "enable": "true", "path": "/app/logs/client.log" }
+  },
+  "applications": [
+    {
+      "name": "client",
+      "id": "0x0100"
+    }
+  ],
+  "service-discovery": {
+    "enable": "true",
+    "multicast": "224.244.224.245",
+    "port": "30490"
+  }
+}
