@@ -4,7 +4,7 @@ This project demonstrates a complete SOME/IP communication implementation using 
 
 ## 🎯 Objective
 
-Create a containerized development environment to test SOME/IP communication between applications, enabling development and testing of distributed systems that use the SOME/IP protocol for service discovery and communication.
+Create a containerized development environment to test SOME/IP communication between applications, simulating a realistic multi-sensor ECU system. The project demonstrates method-separated SOME/IP messages for speed, engine temperature, and ambient temperature sensors, enabling development and testing of distributed automotive systems that use the SOME/IP protocol for service discovery and inter-ECU communication.
 
 ## 🏗️ System Architecture
 
@@ -63,16 +63,21 @@ Create a containerized development environment to test SOME/IP communication bet
 ```
 
 ### Main Components:
-- **vSomeIP Server**: Container offering a SOME/IP service (ID: 0x1234, Instance: 0x0001)
-- **vSomeIP Client**: Container that discovers and consumes the service offered by the server
+- **vSomeIP Server**: Multi-sensor service provider with method-specific handlers for speed, engine temperature, and ambient temperature (Service ID: 0x1234, Instance: 0x5678)
+- **vSomeIP Client**: Multi-threaded sensor simulator sending realistic automotive data via separate SOME/IP methods
 - **Service Discovery**: Communication via UDP multicast for automatic service discovery
 - **Docker Network**: Isolated bridge network (`vsomeip_net`) with subnet `192.168.144.0/20`
 
+### Sensor System:
+- **Speed Sensor Thread**: Generates realistic speed data (0-250 km/h) every 2 seconds via Method 0x0001
+- **Engine Temperature Thread**: Simulates engine temperature (70-110°C) every 3 seconds via Method 0x0002
+- **Ambient Temperature Thread**: Provides ambient temperature (-20 to 45°C) every 5 seconds via Method 0x0003
+
 ### Communication Flow:
-1. **Server** starts and offers the service via Service Discovery
-2. **Client** searches for available services via multicast
+1. **Server** starts and offers the multi-sensor service via Service Discovery
+2. **Client** discovers the service and starts three sensor simulation threads
 3. **Service Discovery** establishes the connection between client and server
-4. **SOME/IP message exchange** between applications
+4. **Multi-sensor SOME/IP communication** with method-separated protocols for each sensor type
 
 ## 🧱 Project Structure
 
@@ -159,19 +164,52 @@ tail -f client/logs/client.log
 tail -f server/logs/server.log client/logs/client.log
 ```
 
-### 5. Expected success logs:
+### 5. Monitor sensor data in real-time
 
-**Server:**
-```log
-[info] OFFER(0127): [1234.0001:0.0] (true)
-Server: Offering service 0x1234, instance 0x0001
+```bash
+# Monitor server logs directly from host (recommended)
+tail -f server/logs/server.log
+
+# Monitor client logs directly from host
+tail -f client/logs/client.log
+
+# Monitor both server and client logs simultaneously
+tail -f server/logs/server.log client/logs/client.log
+
+# Filter only sensor data from server logs
+tail -f server/logs/server.log | grep -E "(Speed|Engine|Ambient)"
+
+# Monitor specific sensors from server logs
+tail -f server/logs/server.log | grep "Speed"
+tail -f server/logs/server.log | grep "Engine.*temp"
+tail -f server/logs/server.log | grep "Ambient"
+
+# Monitor sensor alerts (abnormal values)
+tail -f server/logs/server.log | grep -E "(ALERT|WARNING)"
+
+# Alternative: Using docker-compose logs
+docker-compose logs -f server | grep -E "(Speed|Engine|Ambient)"
+docker-compose logs -f client
 ```
 
-**Client:**
+### 6. Expected success logs:
+
+**Server (Multi-sensor output):**
 ```log
-on_availability: service=0x1234, instance=0x1, available=true
-Server: Received message from client!
-Total clients communicated: 1
+[info] OFFER(0127): [1234.5678:0.0] (true)
+Server: Offering service 0x1234, instance 0x5678
+Speed sensor data: 87.45 km/h (timestamp: 1703123456)
+Engine temp data: 89.12°C (timestamp: 1703123457)
+Ambient temp data: 22.78°C (timestamp: 1703123458)
+ALERT: Engine temperature high: 106.34°C
+```
+
+**Client (Multi-threaded output):**
+```log
+on_availability: service=0x1234, instance=0x5678, available=true
+Speed thread: Sending 87.45 km/h
+Engine temp thread: Sending 89.12°C
+Ambient temp thread: Sending 22.78°C
 ```
 
 ## 🔧 Development and Debugging
@@ -200,38 +238,74 @@ docker network inspect vsomeip-docker_vsomeip_net
 docker exec -it vsomeip_client nc -zv vsomeip_server 30001
 ```
 
-## 📊 Network Analysis with tcpdump and Wireshark
+## 📊 Network Analysis and Protocol Monitoring
 
 ### Find the correct Docker network interface:
 
 ```bash
-# First, identify the Docker bridge interface for vsomeip network
+# Identify the Docker bridge interface for vsomeip network
 docker network ls
-ip addr show | grep -A 3 "br-"
+docker network inspect vsomeip-docker_vsomeip_net | grep -E "(NetworkID|Gateway)"
 
-# The interface will be something like br-xxxxxxxxx matching your network ID
+# Auto-detect the correct interface
+DOCKER_IF=$(docker network inspect vsomeip-docker_vsomeip_net --format '{{.Id}}' | head -c 12)
+INTERFACE="br-$DOCKER_IF"
+echo "Docker interface: $INTERFACE"
+
+# Verify interface exists
+ip addr show | grep $INTERFACE
 ```
 
 ### Capture SOME/IP traffic with tcpdump:
 
 ```bash
-# Replace br-xxxxxxxxx with your actual Docker bridge interface
-# You can find it with: docker network inspect vsomeip-docker_vsomeip_net
+# Capture all SOME/IP traffic (Service Discovery + sensor data)
+sudo tcpdump -i $INTERFACE -v
 
-# Capture all traffic on Docker network interface
-sudo tcpdump -i br-xxxxxxxxx -w someip_capture.pcap
+# Capture only Service Discovery (SD) multicast traffic
+sudo tcpdump -i $INTERFACE -v dst 224.244.224.245
 
-# Capture only UDP traffic on Service Discovery port
-sudo tcpdump -i br-xxxxxxxxx -w sd_capture.pcap udp port 30490
+# Capture sensor data traffic between containers
+sudo tcpdump -i $INTERFACE -v net 192.168.144.0/20
 
-# Capture with verbose output (real-time analysis)
-sudo tcpdump -i br-xxxxxxxxx -v udp port 30490
+# Save capture for Wireshark analysis
+sudo tcpdump -i $INTERFACE -w someip_capture.pcap
 
-# Capture specific IP communication between containers
-sudo tcpdump -i br-xxxxxxxxx -w client_server.pcap host 192.168.144.2 and host 192.168.144.3
+# Filter by specific method IDs (sensor types)
+sudo tcpdump -i $INTERFACE -v -X | grep -A 10 -B 5 "1234"
 ```
 
-### Advanced tcpdump filters for SOME/IP:
+### Analyze sensor protocol patterns:
+
+```bash
+# Monitor speed sensor traffic (Method 0x0001)
+sudo tcpdump -i $INTERFACE -v -X | grep -A 5 "0001"
+
+# Monitor engine temperature traffic (Method 0x0002)  
+sudo tcpdump -i $INTERFACE -v -X | grep -A 5 "0002"
+
+# Monitor ambient temperature traffic (Method 0x0003)
+sudo tcpdump -i $INTERFACE -v -X | grep -A 5 "0003"
+
+# Count messages per sensor type
+sudo tcpdump -i $INTERFACE -c 100 | grep -c "30001"  # Service port
+```
+
+### Advanced tcpdump filters for multi-sensor SOME/IP:
+
+```bash
+# Capture specific service ID (0x1234) traffic
+sudo tcpdump -i $INTERFACE -X -s 0 | grep -B 2 -A 10 "1234"
+
+# Monitor only client-to-server communication
+sudo tcpdump -i $INTERFACE src 192.168.144.3 and dst 192.168.144.2
+
+# Monitor only server responses
+sudo tcpdump -i $INTERFACE src 192.168.144.2 and dst 192.168.144.3
+
+# Time-stamped capture with sensor frequency analysis
+sudo tcpdump -i $INTERFACE -ttt net 192.168.144.0/20
+```
 
 ```bash
 # Capture multicast Service Discovery messages
@@ -291,19 +365,41 @@ tail -f server/logs/server.log client/logs/client.log
 
 ## 🚀 Extensions and Improvements
 
-### Add more clients:
+### Add more sensor types:
+
+1. **Fuel Level Sensor (Method 0x0004):**
+   ```cpp
+   // Add to client: fuel level simulation (0-100%)
+   // Add to server: fuel level handler with low fuel alerts
+   ```
+
+2. **Tire Pressure Sensors (Methods 0x0005-0x0008):**
+   ```cpp
+   // Four separate methods for each wheel
+   // Pressure simulation (1.8-2.5 bar) with alerts
+   ```
+
+3. **GPS Coordinates (Method 0x0009):**
+   ```cpp
+   // Latitude/longitude simulation with movement patterns
+   ```
+
+### Add more clients (Multi-ECU simulation):
 
 1. Duplicate the `client` service in `docker-compose.yml`
 2. Change container name and application ID
-3. Configure a different `client-config.json`
+3. Configure different sensor types per ECU
+4. Simulate ECU-specific behavior patterns
 
-### Advanced configurations:
+### Advanced sensor configurations:
 
-- **Reliable/TCP**: Add TCP communication besides UDP
-- **Methods**: Implement request/response methods
-- **Events**: Implement event notifications  
-- **Fields**: Implement getter/setter fields
-- **Security**: Enable vSomeIP authentication
+- **Sensor fusion**: Combine multiple sensor readings for derived values
+- **Error simulation**: Introduce sensor failures and error conditions
+- **Data validation**: Add checksum and data integrity validation
+- **Reliable/TCP**: Add TCP communication for critical sensor data
+- **Events**: Implement event notifications for sensor threshold violations
+- **Fields**: Implement getter/setter fields for sensor calibration
+- **Security**: Enable vSomeIP authentication for sensor data protection
 
 ## 🧼 Cleanup and Maintenance
 
@@ -333,7 +429,48 @@ docker system prune  # Remove unused resources
 
 ## 🛠️ Troubleshooting
 
-### Common problems:
+### Multi-sensor specific issues:
+
+1. **Sensor data not appearing:**
+   ```bash
+   # Check if all three threads are running
+   docker-compose logs client | grep -E "(Speed|Engine|Ambient).*thread"
+   
+   # Verify method registration on server
+   docker-compose logs server | grep -E "register.*0x000[123]"
+   
+   # Check for method-specific errors
+   docker-compose logs server | grep -E "Method.*not.*found"
+   ```
+
+2. **Missing sensor alerts:**
+   ```bash
+   # Force engine temperature alert by checking thresholds
+   docker-compose logs server | grep -E "(temp|°C)" | tail -10
+   
+   # Monitor for temperature values > 105°C
+   docker-compose logs -f server | grep -E "ALERT.*temp"
+   ```
+
+3. **Sensor frequency issues:**
+   ```bash
+   # Check thread timing
+   docker-compose logs client | grep -E "thread.*Sending" | tail -20
+   
+   # Verify different update frequencies (2s, 3s, 5s)
+   docker-compose logs -f client --timestamps
+   ```
+
+4. **Method separation problems:**
+   ```bash
+   # Verify each method ID is handled separately
+   docker-compose logs server | grep -E "Method.*0x000[123]"
+   
+   # Check payload sizes (should be 8 bytes per sensor)
+   docker-compose logs server | grep -E "payload.*size"
+   ```
+
+### General SOME/IP issues:
 
 1. **Service Discovery doesn't work:**
    - Verify containers are in the same Docker network
@@ -388,12 +525,15 @@ docker exec -it vsomeip_server ps aux
 ## 🎯 Use Cases
 
 This project serves as a foundation for:
-- **Automotive development**: Simulation of ECUs communicating via Ethernet
-- **Integration testing**: Validation of SOME/IP services
-- **Prototyping**: Rapid development of distributed applications
-- **Education**: Learning SOME/IP protocol and Service Discovery
-- **Network analysis**: Understanding SOME/IP traffic patterns and debugging communication issues
+- **Automotive ECU simulation**: Multi-sensor vehicle systems with realistic speed, engine temperature, and ambient temperature data
+- **Method-separated SOME/IP protocols**: Demonstrating how to handle different sensor types via separate method IDs
+- **Multi-threaded sensor systems**: Simulation of real-world sensor frequencies and data generation patterns
+- **Integration testing**: Validation of SOME/IP services with multiple concurrent data streams
+- **Prototyping**: Rapid development of distributed automotive applications with realistic sensor behavior
+- **Education**: Learning SOME/IP protocol, Service Discovery, and automotive sensor communication patterns
+- **Network analysis**: Understanding SOME/IP traffic patterns for multi-sensor systems and debugging communication issues
+- **Performance testing**: Analyzing system behavior under multiple concurrent sensor data streams
 
-## Atribuição
+## Attribution
 
-Se utilizar este código em seu projeto, por favor, credite: **Ismael Vidal**.
+If you use this code in your project, please credit: **Ismael Vidal**.
