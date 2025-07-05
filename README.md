@@ -393,3 +393,7 @@ This project serves as a foundation for:
 - **Prototyping**: Rapid development of distributed applications
 - **Education**: Learning SOME/IP protocol and Service Discovery
 - **Network analysis**: Understanding SOME/IP traffic patterns and debugging communication issues
+
+## Atribuição
+
+Se utilizar este código em seu projeto, por favor, credite: **Ismael Vidal**.
