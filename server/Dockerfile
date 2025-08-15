@@ -10,16 +10,28 @@ RUN apt-get update && apt-get install -y \
     git cmake g++ build-essential \
     libboost-all-dev libsystemd-dev \
     pkg-config jq netcat \
+    iputils-ping tcpdump \
+    libgtest-dev libbenchmark-dev \
  && apt-get clean
+
+# Build and install Google Test
+RUN cd /usr/src/gtest && \
+    cmake . && \
+    make && \
+    cp lib/*.a /usr/lib/
 
 # Clone & build vSomeIP once
 WORKDIR /opt
 RUN git clone https://github.com/COVESA/vsomeip.git && \
-    cd vsomeip && mkdir build && cd build && \
+    cd vsomeip && \
+    git checkout 3.4.10 && \
+    mkdir build && cd build && \
     cmake -DCMAKE_BUILD_TYPE=RelWithDebInfo \
           -DENABLE_SIGNAL_HANDLING=1 \
           -DENABLE_CONFIGURATION=1 \
           -DBUILD_SHARED_LIBS=ON \
+          -DENABLE_EXAMPLES=OFF \
+          -DENABLE_TESTS=OFF \
           -DCMAKE_INSTALL_PREFIX=/usr/local .. && \
     make -j$(nproc) && make install
 

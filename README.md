@@ -401,7 +401,43 @@ tail -f server/logs/server.log client/logs/client.log
 - **Fields**: Implement getter/setter fields for sensor calibration
 - **Security**: Enable vSomeIP authentication for sensor data protection
 
-## 🧼 Cleanup and Maintenance
+## � Unit Testing
+
+### Test Framework Setup:
+
+```bash
+# Build and run unit tests
+docker exec -it vsomeip_server sh -c 'cd /app/tests/build && make && ./runAllTests'
+
+# Run specific test categories
+docker exec -it vsomeip_server sh -c 'cd /app/tests/build && ./runHandlerTests'
+docker exec -it vsomeip_server sh -c 'cd /app/tests/build && ./runDeserializationTests'
+
+# Generate test coverage report
+docker exec -it vsomeip_server sh -c 'cd /app/tests/build && make coverage'
+```
+
+### Test Structure:
+- **Handler Tests**: Verify SOME/IP method handlers for each sensor type
+- **Serialization Tests**: Validate sensor data serialization/deserialization
+- **Thread Tests**: Test multi-threaded sensor simulation
+- **Network Tests**: Mock vSomeIP communication for isolated testing
+- **Integration Tests**: End-to-end sensor data flow verification
+
+### Example Test Categories:
+```cpp
+// Speed sensor handler tests
+TEST(SpeedHandlerTest, ValidSpeedRange)
+TEST(SpeedHandlerTest, PayloadDeserialization)
+
+// Engine temperature tests  
+TEST(EngineHandlerTest, TemperatureAlerts)
+TEST(EngineHandlerTest, OverheatingDetection)
+
+// Multi-threading tests
+TEST(SensorThreadTest, ConcurrentExecution)
+TEST(SensorThreadTest, TimingIntervals)
+```
 
 ### Stop and remove containers:
 

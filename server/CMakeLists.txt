@@ -9,7 +9,7 @@ find_package(vsomeip3 REQUIRED)
 include_directories(${Boost_INCLUDE_DIRS})
 include_directories(${VSOMEIP_INCLUDE_DIRS})
 
-add_executable(server server.cpp)
+add_executable(server server.cpp sensor_data.cpp)
 
 target_link_libraries(server
     ${Boost_LIBRARIES}
